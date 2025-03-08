@@ -51,12 +51,14 @@ int main() {
     std::vector<int> labels;
 
     // Load the Iris dataset
+    std::cout << "Loading dataset..." << std::endl;
     loader.load_iris_dataset("C:/Users/User/CPU-GPU-DecisionTreeAlgorithm/iris.data", data, labels);
 
     // Print dataset size for debugging
     std::cout << "Loaded " << data.size() << " samples with " << data[0].size() << " features each." << std::endl;
 
     // Split the dataset into training and testing sets
+    std::cout << "Splitting dataset into training and testing sets..." << std::endl;
     std::vector<std::vector<double>> train_data, test_data;
     std::vector<int> train_labels, test_labels;
     split_dataset(data, labels, train_data, train_labels, test_data, test_labels);
@@ -65,10 +67,13 @@ int main() {
     std::cout << "Testing set size: " << test_data.size() << std::endl;
 
     // Train the Decision Tree
+    std::cout << "Training the decision tree..." << std::endl;
     DecisionTree tree;
     tree.fit(train_data, train_labels);
+    std::cout << "Decision tree training completed." << std::endl;
 
     // Test the Decision Tree on the testing set
+    std::cout << "Predicting labels for the test set..." << std::endl;
     std::vector<int> predicted_labels;
     for (const auto& sample : test_data) {
         int prediction = tree.predict(sample);

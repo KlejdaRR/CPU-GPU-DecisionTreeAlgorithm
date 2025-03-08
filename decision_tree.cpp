@@ -5,13 +5,11 @@
 #include <iostream>
 
 // Constructor
-DecisionTree::DecisionTree(int max_depth) : max_depth(max_depth), root(nullptr) {
-    // Constructor implementation
-}
+DecisionTree::DecisionTree(int max_depth) : max_depth(max_depth), root(nullptr) {}
 
 // Destructor
 DecisionTree::~DecisionTree() {
-    delete_tree(root); // Call the helper function to delete the tree
+    delete_tree(root);
 }
 
 // Helper function to delete the tree
@@ -27,7 +25,7 @@ void DecisionTree::delete_tree(Node* node) {
 double DecisionTree::calculate_gini(const std::vector<int>& labels) {
     if (labels.empty()) return 0.0;
 
-    std::vector<int> counts(3, 0); // Assuming 3 classes (Iris-setosa, Iris-versicolor, Iris-virginica)
+    std::vector<int> counts(3, 0); // Assuming 3 classes
     for (int label : labels) {
         counts[label]++;
     }
@@ -46,16 +44,15 @@ Node* DecisionTree::build_tree(const std::vector<std::vector<double>>& data, con
     int num_samples = data.size();
     int num_features = data[0].size();
 
-    // Debugging: Print current depth and number of samples
     std::cout << "Depth: " << depth << ", Samples: " << num_samples << std::endl;
 
     // Stopping conditions
-    if (depth >= max_depth || num_samples <= 2) {
+    bool all_same = std::all_of(labels.begin(), labels.end(), [&](int v) { return v == labels[0]; });
+    if (depth >= max_depth || num_samples <= 2 || all_same) {
         Node* leaf = new Node();
         leaf->value = std::distance(labels.begin(), std::max_element(labels.begin(), labels.end()));
-        leaf->left = nullptr; // Explicitly set left and right pointers to nullptr
+        leaf->left = nullptr;
         leaf->right = nullptr;
-        // Debugging: Print leaf node value
         std::cout << "Created leaf node with value: " << leaf->value << std::endl;
         return leaf;
     }
@@ -64,7 +61,7 @@ Node* DecisionTree::build_tree(const std::vector<std::vector<double>>& data, con
     int best_feature = -1;
     double best_threshold = 0.0;
 
-    #pragma omp parallel for
+    #pragma omp parallel for collapse(2)
     for (int feature_index = 0; feature_index < num_features; feature_index++) {
         for (int sample_index = 0; sample_index < num_samples; sample_index++) {
             double threshold = data[sample_index][feature_index];
@@ -93,7 +90,6 @@ Node* DecisionTree::build_tree(const std::vector<std::vector<double>>& data, con
         }
     }
 
-    // Debugging: Print best feature and threshold
     std::cout << "Best feature: " << best_feature << ", Best threshold: " << best_threshold << std::endl;
 
     Node* node = new Node();
@@ -112,7 +108,6 @@ Node* DecisionTree::build_tree(const std::vector<std::vector<double>>& data, con
         }
     }
 
-    // Recursively build left and right subtrees
     node->left = build_tree(left_data, left_labels, depth + 1);
     node->right = build_tree(right_data, right_labels, depth + 1);
 
@@ -121,20 +116,22 @@ Node* DecisionTree::build_tree(const std::vector<std::vector<double>>& data, con
 
 // Fit the decision tree
 void DecisionTree::fit(const std::vector<std::vector<double>>& data, const std::vector<int>& labels) {
+    std::cout << "Starting to build the decision tree..." << std::endl;
     root = build_tree(data, labels, 0);
+    std::cout << "Decision tree built successfully." << std::endl;
 }
 
 // Predict using the decision tree
 int DecisionTree::predict(const std::vector<double>& sample) {
+    std::cout << "Predicting sample..." << std::endl;
     Node* node = root;
     while (node->left || node->right) {
-        std::cout << "Traversing node: Feature " << node->feature_index << ", Threshold " << node->threshold << std::endl;
         if (sample[node->feature_index] <= node->threshold) {
             node = node->left;
         } else {
             node = node->right;
         }
     }
-    std::cout << "Reached leaf node with value: " << node->value << std::endl;
+    std::cout << "Predicted value: " << node->value << std::endl;
     return node->value;
 }

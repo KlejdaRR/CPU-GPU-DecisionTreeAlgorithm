@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <omp.h>
 #include <iostream>
+#include <map>
 
 // Constructor
 DecisionTree::DecisionTree(int max_depth) : max_depth(max_depth), root(nullptr) {}
@@ -21,18 +22,29 @@ void DecisionTree::delete_tree(Node* node) {
     }
 }
 
+// Find the most common label (mode)
+int DecisionTree::most_common_label(const std::vector<int>& labels) {
+    std::map<int, int> label_count;
+    for (int label : labels) {
+        label_count[label]++;
+    }
+    
+    return std::max_element(label_count.begin(), label_count.end(), 
+                            [](const auto& a, const auto& b) { return a.second < b.second; })->first;
+}
+
 // Calculate Gini impurity
 double DecisionTree::calculate_gini(const std::vector<int>& labels) {
     if (labels.empty()) return 0.0;
 
-    std::vector<int> counts(3, 0); // Assuming 3 classes
+    std::map<int, int> label_count;
     for (int label : labels) {
-        counts[label]++;
+        label_count[label]++;
     }
 
     double gini = 1.0;
-    for (int count : counts) {
-        double probability = static_cast<double>(count) / labels.size();
+    for (const auto& pair : label_count) {
+        double probability = static_cast<double>(pair.second) / labels.size();
         gini -= probability * probability;
     }
 
@@ -47,10 +59,9 @@ Node* DecisionTree::build_tree(const std::vector<std::vector<double>>& data, con
     std::cout << "Depth: " << depth << ", Samples: " << num_samples << std::endl;
 
     // Stopping conditions
-    bool all_same = std::all_of(labels.begin(), labels.end(), [&](int v) { return v == labels[0]; });
-    if (depth >= max_depth || num_samples <= 2 || all_same) {
+    if (depth >= max_depth || num_samples <= 2 || std::all_of(labels.begin(), labels.end(), [&](int v) { return v == labels[0]; })) {
         Node* leaf = new Node();
-        leaf->value = std::distance(labels.begin(), std::max_element(labels.begin(), labels.end()));
+        leaf->value = most_common_label(labels);  // Corrected leaf assignment
         leaf->left = nullptr;
         leaf->right = nullptr;
         std::cout << "Created leaf node with value: " << leaf->value << std::endl;
@@ -61,33 +72,60 @@ Node* DecisionTree::build_tree(const std::vector<std::vector<double>>& data, con
     int best_feature = -1;
     double best_threshold = 0.0;
 
-    #pragma omp parallel for collapse(2)
-    for (int feature_index = 0; feature_index < num_features; feature_index++) {
-        for (int sample_index = 0; sample_index < num_samples; sample_index++) {
-            double threshold = data[sample_index][feature_index];
+    // Use a local best feature storage to avoid race conditions
+    #pragma omp parallel
+    {
+        int local_best_feature = -1;
+        double local_best_threshold = 0.0;
+        double local_best_gini = 1.0;
 
-            std::vector<int> left_labels, right_labels;
-            for (int i = 0; i < num_samples; i++) {
-                if (data[i][feature_index] <= threshold) {
-                    left_labels.push_back(labels[i]);
-                } else {
-                    right_labels.push_back(labels[i]);
+        #pragma omp for nowait
+        for (int feature_index = 0; feature_index < num_features; feature_index++) {
+            for (int sample_index = 0; sample_index < num_samples; sample_index++) {
+                double threshold = data[sample_index][feature_index];
+
+                std::vector<int> left_labels, right_labels;
+                for (int i = 0; i < num_samples; i++) {
+                    if (data[i][feature_index] <= threshold) {
+                        left_labels.push_back(labels[i]);
+                    } else {
+                        right_labels.push_back(labels[i]);
+                    }
                 }
-            }
 
-            double gini_left = calculate_gini(left_labels);
-            double gini_right = calculate_gini(right_labels);
-            double weighted_gini = (left_labels.size() * gini_left + right_labels.size() * gini_right) / num_samples;
+                if (left_labels.empty() || right_labels.empty()) continue;
 
-            #pragma omp critical
-            {
-                if (weighted_gini < best_gini) {
-                    best_gini = weighted_gini;
-                    best_feature = feature_index;
-                    best_threshold = threshold;
+                double gini_left = calculate_gini(left_labels);
+                double gini_right = calculate_gini(right_labels);
+                double weighted_gini = (left_labels.size() * gini_left + right_labels.size() * gini_right) / num_samples;
+
+                if (weighted_gini < local_best_gini) {
+                    local_best_gini = weighted_gini;
+                    local_best_feature = feature_index;
+                    local_best_threshold = threshold;
                 }
             }
         }
+
+        // Update global best feature safely
+        #pragma omp critical
+        {
+            if (local_best_gini < best_gini) {
+                best_gini = local_best_gini;
+                best_feature = local_best_feature;
+                best_threshold = local_best_threshold;
+            }
+        }
+    }
+
+    // If no valid split is found, return a leaf
+    if (best_feature == -1) {
+        Node* leaf = new Node();
+        leaf->value = most_common_label(labels);
+        leaf->left = nullptr;
+        leaf->right = nullptr;
+        std::cout << "Created fallback leaf node with value: " << leaf->value << std::endl;
+        return leaf;
     }
 
     std::cout << "Best feature: " << best_feature << ", Best threshold: " << best_threshold << std::endl;
@@ -123,7 +161,6 @@ void DecisionTree::fit(const std::vector<std::vector<double>>& data, const std::
 
 // Predict using the decision tree
 int DecisionTree::predict(const std::vector<double>& sample) {
-    std::cout << "Predicting sample..." << std::endl;
     Node* node = root;
     while (node->left || node->right) {
         if (sample[node->feature_index] <= node->threshold) {
@@ -132,6 +169,5 @@ int DecisionTree::predict(const std::vector<double>& sample) {
             node = node->right;
         }
     }
-    std::cout << "Predicted value: " << node->value << std::endl;
     return node->value;
 }

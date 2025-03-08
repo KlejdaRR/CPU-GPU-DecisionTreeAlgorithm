@@ -25,6 +25,8 @@ private:
     Node* build_tree(const std::vector<std::vector<double>>& data, const std::vector<int>& labels, int depth);
     double calculate_gini(const std::vector<int>& labels);
     void delete_tree(Node* node);
+    int most_common_label(const std::vector<int>& labels);
+
 };
 
 #endif

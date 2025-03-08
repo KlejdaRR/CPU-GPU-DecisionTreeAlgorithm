@@ -3,6 +3,7 @@
 
 #include <vector>
 
+// The structure here represents a node in the decision tree
 struct Node {
     int feature_index;
     double threshold;
@@ -11,6 +12,7 @@ struct Node {
     int value; // For leaf nodes
 };
 
+// Class that represents a Decision Tree for classification
 class DecisionTree {
 public:
     DecisionTree(int max_depth = 10);

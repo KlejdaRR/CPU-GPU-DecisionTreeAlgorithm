@@ -5,15 +5,15 @@
 #include <iostream>
 #include <map>
 
-// Constructor
+// Constructor: It initializes the tree with a given maximum depth and sets root to nullptr
 DecisionTree::DecisionTree(int max_depth) : max_depth(max_depth), root(nullptr) {}
 
-// Destructor
+// Destructor: It frees memory allocated for the tree nodes
 DecisionTree::~DecisionTree() {
     delete_tree(root);
 }
 
-// Helper function to delete the tree
+// A recursive function to delete all nodes in the tree
 void DecisionTree::delete_tree(Node* node) {
     if (node) {
         delete_tree(node->left);
@@ -22,18 +22,20 @@ void DecisionTree::delete_tree(Node* node) {
     }
 }
 
-// Find the most common label (mode)
+// Function that finds the most common class label in a dataset which we use later for leaf nodes
 int DecisionTree::most_common_label(const std::vector<int>& labels) {
     std::map<int, int> label_count;
+
+    // Counting the occurrences of each label
     for (int label : labels) {
         label_count[label]++;
     }
-    
+    // Here we return the label with the highest frequency
     return std::max_element(label_count.begin(), label_count.end(), 
                             [](const auto& a, const auto& b) { return a.second < b.second; })->first;
 }
 
-// Calculate Gini impurity
+// Function that calculates the Gini impurity, that is a measure of how mixed the class labels are in our dataset
 double DecisionTree::calculate_gini(const std::vector<int>& labels) {
     if (labels.empty()) return 0.0;
 
@@ -45,20 +47,23 @@ double DecisionTree::calculate_gini(const std::vector<int>& labels) {
     double gini = 1.0;
     for (const auto& pair : label_count) {
         double probability = static_cast<double>(pair.second) / labels.size();
-        gini -= probability * probability;
+        gini -= probability * probability; // Gini impurity formula
     }
 
     return gini;
 }
 
-// Build the decision tree
+// Recursive function that builds a decision tree using the iris dataset
 Node* DecisionTree::build_tree(const std::vector<std::vector<double>>& data, const std::vector<int>& labels, int depth) {
     int num_samples = data.size();
     int num_features = data[0].size();
 
     std::cout << "Depth: " << depth << ", Samples: " << num_samples << std::endl;
 
-    // Stopping conditions
+    // Implementation of stopping conditions:
+    // - Maximum depth reached
+    // - Too few samples to split
+    // - All labels are the same (pure leaf)
     if (depth >= max_depth || num_samples <= 2 || std::all_of(labels.begin(), labels.end(), [&](int v) { return v == labels[0]; })) {
         Node* leaf = new Node();
         leaf->value = most_common_label(labels);  // Corrected leaf assignment
@@ -72,13 +77,14 @@ Node* DecisionTree::build_tree(const std::vector<std::vector<double>>& data, con
     int best_feature = -1;
     double best_threshold = 0.0;
 
-    // Use a local best feature storage to avoid race conditions
+    // Usage of OpenMP parallelization for feature and threshold selection
     #pragma omp parallel
     {
         int local_best_feature = -1;
         double local_best_threshold = 0.0;
         double local_best_gini = 1.0;
 
+        // Iteration over each feature in order to find the best split
         #pragma omp for nowait
         for (int feature_index = 0; feature_index < num_features; feature_index++) {
             for (int sample_index = 0; sample_index < num_samples; sample_index++) {
@@ -95,6 +101,7 @@ Node* DecisionTree::build_tree(const std::vector<std::vector<double>>& data, con
 
                 if (left_labels.empty() || right_labels.empty()) continue;
 
+                // Calculation of weighted Gini impurity for the split
                 double gini_left = calculate_gini(left_labels);
                 double gini_right = calculate_gini(right_labels);
                 double weighted_gini = (left_labels.size() * gini_left + right_labels.size() * gini_right) / num_samples;
@@ -107,7 +114,7 @@ Node* DecisionTree::build_tree(const std::vector<std::vector<double>>& data, con
             }
         }
 
-        // Update global best feature safely
+        // Here we update global best split
         #pragma omp critical
         {
             if (local_best_gini < best_gini) {
@@ -118,7 +125,7 @@ Node* DecisionTree::build_tree(const std::vector<std::vector<double>>& data, con
         }
     }
 
-    // If no valid split is found, return a leaf
+    // In case no valid split is found, a leaf is returned 
     if (best_feature == -1) {
         Node* leaf = new Node();
         leaf->value = most_common_label(labels);
@@ -130,10 +137,12 @@ Node* DecisionTree::build_tree(const std::vector<std::vector<double>>& data, con
 
     std::cout << "Best feature: " << best_feature << ", Best threshold: " << best_threshold << std::endl;
 
+    // Creation of a new decision node
     Node* node = new Node();
     node->feature_index = best_feature;
     node->threshold = best_threshold;
 
+    // Splitting of data into left and right branches
     std::vector<std::vector<double>> left_data, right_data;
     std::vector<int> left_labels, right_labels;
     for (int i = 0; i < num_samples; i++) {
@@ -146,22 +155,25 @@ Node* DecisionTree::build_tree(const std::vector<std::vector<double>>& data, con
         }
     }
 
+    // Recursively building the left and right subtrees
     node->left = build_tree(left_data, left_labels, depth + 1);
     node->right = build_tree(right_data, right_labels, depth + 1);
 
     return node;
 }
 
-// Fit the decision tree
+// Function that trains the decision tree using the iris dataset
 void DecisionTree::fit(const std::vector<std::vector<double>>& data, const std::vector<int>& labels) {
     std::cout << "Starting to build the decision tree..." << std::endl;
     root = build_tree(data, labels, 0);
     std::cout << "Decision tree built successfully." << std::endl;
 }
 
-// Predict using the decision tree
+// Function that predicts the class label for a given input sample
 int DecisionTree::predict(const std::vector<double>& sample) {
     Node* node = root;
+
+    // Traversing the tree based on feature thresholds
     while (node->left || node->right) {
         if (sample[node->feature_index] <= node->threshold) {
             node = node->left;

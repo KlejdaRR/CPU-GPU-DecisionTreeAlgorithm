@@ -16,6 +16,7 @@ This is a project created for the course of High Performance Computer Architectu
 │── data_loader.cpp     # Implementation file for dataset loading
 │── decision_tree.h     # Header file for Decision Tree Classifier
 │── decision_tree.cpp   # Implementation file for Decision Tree Classifier
+│── decision_tree_without_openm.cpp   # Implementation file for Decision Tree Classifier without OpenMP parallelization
 │── iris.data           # Iris Dataset file
 │── main.cpp            # Main program file
 │── README.md           # Project documentation
